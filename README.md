@@ -1,83 +1,52 @@
-<div style="background-color: #ffffff; color: #000000; padding: 10px;">
-<img src="00_aisc/img/logo_aisc_bmftr.jpg">
-<h1> Your title.
+<div align="center">
+  <img src="00_aisc/img/logo_aisc_bmftr.jpg" alt="HPI AI Service Centre, funded by the BMFTR" width="420">
 </div>
 
-Your project description in two or three sentences: what it does, for whom, and what makes it worth a look.
+# workshop-rag-scores
 
-![Screenshot of the application](00_aisc/img/screenshot_app.png)
+Anonymous score submissions for the chunking exercise of the HPI AI Service Centre's **RAG II** workshop. This repository holds no code. Its issue tracker is the collection box.
 
-Replace `00_aisc/img/screenshot_app.png` with a screenshot of your application. Keep the image under the description so it is the first thing a visitor sees after the title; a 1280 by 720 PNG renders well on GitHub.
+## What this is for
 
-## Features
+The workshop opens and closes with the same five-minute exercise: participants tune a chunking and embedding configuration in the [`w2_00_chunking_playground`](https://github.com/aihpi/workshop-rag) notebook, once before they have been taught anything and once after. Comparing the two rounds in front of the room is the point of the exercise, so the scores have to be collected somewhere both the notebook and the instructor can reach.
 
-- **Key Feature 1**: A description of the Key features
-- **Key Feature 2**: A description of the Key features
+An issue is the cheapest thing that works. Anyone with a GitHub account can open one on a public repository, no write access has to be granted before the workshop or revoked afterwards, and two submissions can never conflict with each other.
 
-## Setup and Installation
+## What a submission contains
 
-### Prerequisites
+One issue per attempt, opened by the notebook with everything already filled in:
 
-- Docker and Docker Compose
-- NVIDIA GPU with CUDA support (optional, but recommended for faster performance)
+```
+handle: teal-otter-41
+try: 1
+config: chars_1200__octen
+recall_at_5: 0.6341
+mrr: 0.7102
+ndcg_at_5: 0.6503
+evaluations_used: 6
+```
 
-### Quick Start
+The handle is a random name the notebook draws once and keeps in a gitignored file on the participant's own machine. It exists so that a participant's first and second attempt can be paired, and it is the only identifier in the data. No names, no e-mail addresses, no answers, nothing about the person.
 
-1. Clone the repository:
-   ```bash
-   git clone ...
-   cd ...
-   ```
+Anonymity has one limit worth stating plainly: GitHub records who opened an issue, so the account is visible on the issue itself. The plot the room sees never shows accounts, only the distribution of scores.
 
-2. Run the setup or install dependencies:
-   ```bash
-   chmod +x setup.sh
-   ./setup.sh
-   ```
+## For the instructor
 
-3. Access the application:
-   - Frontend: ...
-   - Backend API: ...
+Before the session, create the label for it:
 
-## User Guide
+```bash
+gh label create session-2026-09-15 --repo aihpi/workshop-rag-scores --description "RAG II, 15 September 2026" --color 0E8A16
+```
 
-### Using the Tool
-1. A brief description of using the tool.
-2. Be clear and simple.
+After each round, confirm the submissions that belong to the session:
 
-### Recommendations
-Any additional hints for using the tool.
+```bash
+gh issue list --repo aihpi/workshop-rag-scores --label score --state all --limit 100
+gh issue edit <number> --repo aihpi/workshop-rag-scores --add-label session-2026-09-15
+```
 
+The results view at the bottom of the playground notebook reads only labelled issues, so a score submitted after the workshop cannot change a past session. When the session is over, close the issues; they stay readable as a record.
 
-## Limitations
+## Licence
 
-- **Limitation 1**: List of Limitations
-- **Limitation 2**: List of Limitations
-
-
-## References
-
-- [Reference 1](https://hpi.de/kisz)
-- [Reference 2](https://hpi.de/kisz)
-
-## Author
-- [Your Name](https://hpi.de/kisz)
-
-## Issues and the project board
-
-`.github/workflows/add-issue-to-project.yml` adds every new issue to the [AIHPI project board](https://github.com/orgs/aihpi/projects/3). It needs a token in the secret `ADD_ISSUE_TO_PROJECT`, because the workflow's own `GITHUB_TOKEN` cannot write to organisation projects.
-
-- **Public repository**: nothing to do, the organisation-level secret is inherited.
-- **Private repository**: organisation secrets are not available to private repositories on the organisation's GitHub plan, so set the secret once after creating the repository. Ask an organisation admin for the token file, then run `gh secret set ADD_ISSUE_TO_PROJECT -R aihpi/<repository> < path/to/token-file`.
-
-Until the secret exists, the workflow fails on every new issue with `Input required and not supplied: github-token`. Nothing else is affected.
-
-## License
-
-
----
-
-## Acknowledgements
-<img src="00_aisc/img/logo_bmftr_de.png" alt="drawing" style="width:170px;"/>
-
-The [AI Service Centre Berlin Brandenburg](http://hpi.de/kisz) is funded by the [Federal Ministry of Research, Technology and Space](https://www.bmbf.de/) under the funding code 16IS22092.
+[MIT](LICENSE), like the workshop material itself.
