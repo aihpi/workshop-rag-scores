@@ -35,7 +35,7 @@ Anonymity has one limit worth stating plainly: GitHub records who opened an issu
 Before the session, create the label for it:
 
 ```bash
-gh label create session-2026-09-15 --repo aihpi/workshop-rag-scores --description "RAG II, 15 September 2026" --color 0E8A16
+gh api -X POST repos/aihpi/workshop-rag-scores/labels -f name=session-2026-09-15 -f color=0E8A16 -f description="RAG II, 15 September 2026"
 ```
 
 After each round, confirm the submissions that belong to the session:
