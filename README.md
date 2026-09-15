@@ -44,7 +44,7 @@ uv run marimo run instructor.py
 
 It loads every submission, shows what arrived, creates the `session-YYYY-MM-DD` label and applies it to the attempts that belong to the session.
 
-Two figures then show the room how it did. The first is a bar of Recall@5 per handle, switchable between the first try, the second try and both side by side; the second is a box plot of the two rounds with every submission drawn over it. Both carry the best measured configuration as a dashed line, which is the ceiling nobody in the room is expected to reach.
+Two figures then show the room how it did, each a row of three panels: Recall@5, MRR and nDCG@5. The first is a bar per handle, switchable between the first try, the second try and both side by side, with the handles in the same order across the three panels so a participant finds their own bar in the same place. The second is a box plot of the two rounds with every submission drawn over it. Each panel carries the best measured configuration for its own metric as a dashed line, labelled to the right of the panel, which is the ceiling nobody in the room is expected to reach.
 
 Every slow button shows a spinner while it works, and labelling shows a bar because it edits one issue at a time. A button that has done its work goes grey; marimo runs one cell at a time, so that happens once the work is finished rather than while it runs.
 

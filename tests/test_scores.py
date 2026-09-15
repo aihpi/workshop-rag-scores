@@ -11,6 +11,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from scores import (
     BUDGET,
+    METRIC_COLUMNS,
+    METRIC_KEYS,
     by_handle,
     check_submission,
     decode_body,
@@ -109,8 +111,23 @@ def test_the_bars_keep_whoever_sent_only_one_round():
         {'handle': 'b', 'try': '1', 'recall_at_5': '0.5'},          # never came back
         {'handle': 'c', 'try': '2', 'recall_at_5': '0.7'},          # missed the first round
     ]
-    assert by_handle(rows) == {'a': {'1': 0.4, '2': 0.8}, 'b': {'1': 0.5}, 'c': {'2': 0.7}}
+    assert by_handle(rows) == {'a': {'1': {'recall_at_5': 0.4}, '2': {'recall_at_5': 0.8}},
+                               'b': {'1': {'recall_at_5': 0.5}}, 'c': {'2': {'recall_at_5': 0.7}}}
     assert [row['handle'] for row in pair_tries(rows)] == ['a']
+
+
+def test_every_metric_of_a_round_reaches_the_figures():
+    rows = [
+        {'handle': 'a', 'try': '1', 'recall_at_5': '0.4', 'mrr': '0.3', 'ndcg_at_5': '0.2'},
+        {'handle': 'b', 'try': '1', 'recall_at_5': '0.5', 'mrr': 'not a number'},
+    ]
+    assert by_handle(rows)['a']['1'] == {'recall_at_5': 0.4, 'mrr': 0.3, 'ndcg_at_5': 0.2}
+    # An unreadable MRR costs that one panel a bar, not the whole submission.
+    assert by_handle(rows)['b']['1'] == {'recall_at_5': 0.5}
+
+
+def test_the_figures_can_label_every_metric():
+    assert tuple(METRIC_COLUMNS) == METRIC_KEYS
 
 
 def test_a_repeated_round_keeps_the_last_submission():

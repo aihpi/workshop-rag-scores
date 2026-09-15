@@ -37,6 +37,10 @@ GRID_URL = ('https://raw.githubusercontent.com/aihpi/workshop-rag/main/'
 #: exactly what the notebook writes; anything else in a body means the issue was not opened by it
 TEMPLATE_KEYS = ('handle', 'try', 'config', 'recall_at_5', 'mrr', 'ndcg_at_5', 'evaluations_used')
 METRIC_KEYS = ('recall_at_5', 'mrr', 'ndcg_at_5')
+
+#: the same three metrics as the grid spells them, which is also how a figure labels them
+METRIC_COLUMNS = {'recall_at_5': 'Recall@5', 'mrr': 'MRR', 'ndcg_at_5': 'nDCG@5'}
+
 HANDLE_RE = re.compile(r'^[a-z]+-[a-z]+-\d{2}$')
 BUDGET = 8  # evaluations per round, as the playground enforces
 
@@ -128,23 +132,35 @@ def check_submission(row: dict[str, str], known_configs: set[str] | None = None)
     return problems
 
 
-def by_handle(submissions: list[dict[str, str]]) -> dict[str, dict[str, float]]:
-    """Recall@5 per handle and round, keeping the participants who only sent one of the two."""
-    out: dict[str, dict[str, float]] = {}
+def by_handle(submissions: list[dict[str, str]]) -> dict[str, dict[str, dict[str, float]]]:
+    """Every metric per handle and round, keeping the participants who only sent one of the two.
+
+    Shaped `{handle: {'1': {metric: value}, '2': {...}}}`. A round without a readable Recall@5 is
+    dropped, since that is what the room is ranked on; a missing MRR or nDCG@5 only leaves that one
+    metric out of that round, and its panel shows no bar.
+    """
+    out: dict[str, dict[str, dict[str, float]]] = {}
     for row in submissions:
         handle, attempt = row.get('handle'), row.get('try')
         if not handle or attempt not in ('1', '2'):
             continue
         try:
-            out.setdefault(handle, {})[attempt] = float(row['recall_at_5'])
+            metrics = {'recall_at_5': float(row['recall_at_5'])}
         except (KeyError, ValueError):
             continue
+        for key in METRIC_KEYS:
+            try:
+                metrics[key] = float(row[key])
+            except (KeyError, ValueError):
+                continue
+        out.setdefault(handle, {})[attempt] = metrics
     return dict(sorted(out.items()))
 
 
 def pair_tries(submissions: list[dict[str, str]]) -> list[dict[str, Any]]:
-    """One row per handle with its first and second try, dropping anything unpaired."""
-    return [{'handle': handle, 'first': tries['1'], 'second': tries['2']}
+    """One row per handle with its first and second Recall@5, dropping anything unpaired."""
+    return [{'handle': handle,
+             'first': tries['1']['recall_at_5'], 'second': tries['2']['recall_at_5']}
             for handle, tries in by_handle(submissions).items()
             if '1' in tries and '2' in tries]
 
@@ -194,18 +210,19 @@ def fetch_session(label: str, repo: str = SCORES_REPO) -> list[dict[str, str]]:
     return [decode_body(issue.get('body', '')) for issue in issues if 'pull_request' not in issue]
 
 
-def best_known(url: str = GRID_URL) -> tuple[float, set[str]]:
-    """The best measured Recall@5 and every measured configuration id, from the workshop repository.
+def best_known(url: str = GRID_URL) -> tuple[dict[str, float], set[str]]:
+    """The best measured value of each metric, and every measured configuration id.
 
     Read over HTTP rather than vendored, because the grid grows and a stale copy would draw the
-    room's reference line in the wrong place.
+    room's reference lines in the wrong place.
     """
     import pandas as pd
 
     request = urllib.request.Request(url, headers={'Accept': 'application/octet-stream'})
     with urllib.request.urlopen(request, timeout=30) as response:
         grid = pd.read_parquet(BytesIO(response.read()))
-    return float(grid['Recall@5'].max()), set(grid['config_id'])
+    return ({key: float(grid[column].max()) for key, column in METRIC_COLUMNS.items()},
+            set(grid['config_id']))
 
 
 # --- writing, which needs `gh` -----------------------------------------------

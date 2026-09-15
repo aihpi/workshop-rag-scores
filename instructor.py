@@ -44,16 +44,16 @@ def _(mo, scores, ui_load):
     # Everything below reads these five names, so they are defined before anything can go wrong
     # and stay empty until the button is pressed. A cell that stops before its definitions leaves
     # its dependents with a NameError whenever marimo runs them without re-running this cell.
-    gold, known_configs, submissions, pulls = None, None, [], []
+    golds, known_configs, submissions, pulls = {}, None, [], []
 
     if ui_load.value:
         try:
             with mo.status.spinner(title='Reading the measured grid...'):
-                gold, known_configs = scores.best_known()
+                golds, known_configs = scores.best_known()
         except OSError:
-            # The grid only supplies the reference line and the list of measured configurations.
+            # The grid only supplies the reference lines and the list of measured configurations.
             # Without it the submissions still read fine, so say so and carry on.
-            gold, known_configs = None, None
+            golds, known_configs = {}, None
 
         try:
             with mo.status.spinner(title='Reading the submissions...'):
@@ -67,11 +67,11 @@ def _(mo, scores, ui_load):
 
     checked = [{**row, 'problems': scores.check_submission(row['body'], known_configs)}
                for row in submissions]
-    return checked, gold, known_configs, pulls, submissions
+    return checked, golds, known_configs, pulls, submissions
 
 
 @app.cell(hide_code=True)
-def _(checked, gold, known_configs, mo, pulls, ui_load):
+def _(checked, golds, known_configs, mo, pulls, ui_load):
     mo.stop(not ui_load.value, mo.md(''))
     mo.stop(not checked and not pulls, mo.md('*No submissions yet.*'))
 
@@ -90,11 +90,11 @@ def _(checked, gold, known_configs, mo, pulls, ui_load):
     if known_configs is None:
         _notes.append(mo.md(
             'The measured grid could not be fetched, so configurations are not checked and the '
-            '`best known` line is missing from the plot.'))
+            '`best known` lines are missing from the figures.'))
 
     mo.callout(mo.vstack(_notes), kind='warn') if _notes else mo.md(
-        f'*Everything matches the template. Best known Recall@5 is {gold:.1%}.*'
-        if gold is not None else '*Everything matches the template.*')
+        f'*Everything matches the template. Best known Recall@5 is '
+        f'{golds["recall_at_5"]:.1%}.*' if golds else '*Everything matches the template.*')
     return
 
 
@@ -271,76 +271,109 @@ def _(mo, scores, ui_session):
 
 
 @app.cell(hide_code=True)
-def _(gold, mo, np, plt, tries, ui_view):
+def _(golds, mo, np, plt, scores, tries, ui_view):
     mo.stop(not tries, mo.md(''))
     _which = ui_view.value
 
-    # In the paired view a handle keeps its place from its first try, so the room can read the
-    # second bar against the first. Whoever sent only one round still gets their bar.
+    # The handles are ordered once, on the Recall@5 of the round on show, and that order is reused
+    # in all three panels, so a participant finds their own bar in the same place across the row.
+    def _rank(handle):
+        rounds = tries[handle]
+        if _which != 'both':
+            return (0, -rounds[_which]['recall_at_5'])
+        first = rounds.get('1', {}).get('recall_at_5')
+        if first is not None:
+            return (0, -first)
+        # Whoever has no first try cannot be placed against one, so they go to the end.
+        return (1, -rounds.get('2', {}).get('recall_at_5', 0.0))
+
     if _which == 'both':
-        _handles = sorted(tries, key=lambda h: (-tries[h].get('1', -1.0), -tries[h].get('2', 0.0)))
+        _handles = sorted(tries, key=_rank)
     else:
-        _handles = sorted((h for h in tries if _which in tries[h]), key=lambda h: -tries[h][_which])
+        _handles = sorted((h for h in tries if _which in tries[h]), key=_rank)
     mo.stop(not _handles, mo.md('*Nobody sent that round in yet.*'))
 
-    _fig, _ax = plt.subplots(figsize=(7.2, 4.0))
+    _fig, _axes = plt.subplots(1, 3, figsize=(13.5, 4.2))
     _x = np.arange(len(_handles))
-    if _which == 'both':
-        _ax.bar(_x - 0.19, [tries[h].get('1', 0.0) for h in _handles], 0.38,
-                color='#9a9a9a', label='first try')
-        _ax.bar(_x + 0.19, [tries[h].get('2', 0.0) for h in _handles], 0.38,
-                color='#b51f1f', label='second try')
-    else:
-        _ax.bar(_x, [tries[h][_which] for h in _handles], 0.6,
-                color='#9a9a9a' if _which == '1' else '#b51f1f',
-                label='first try' if _which == '1' else 'second try')
-    if gold is not None:
-        _ax.axhline(gold, linestyle='--', color='#1a1a1a', linewidth=1, label=f'best known {gold:.1%}')
+    for _ax, (_key, _label) in zip(_axes, scores.METRIC_COLUMNS.items()):
+        def _values(attempt, key=_key):
+            return [tries[h].get(attempt, {}).get(key, 0.0) for h in _handles]
 
-    _ax.set_xticks(_x, _handles, rotation=45, ha='right', fontsize=8)
-    _ax.set_ylim(bottom=0)
-    _ax.set_ylabel('Recall@5')
-    # Above the axes, because the tallest bar and the best-known line both live in the top right.
-    _ax.legend(frameon=False, loc='lower left', bbox_to_anchor=(0, 1.02), ncols=3, fontsize=9)
-    for _side in ('top', 'right'):
-        _ax.spines[_side].set_visible(False)
+        if _which == 'both':
+            _ax.bar(_x - 0.19, _values('1'), 0.38, color='#9a9a9a', label='first try')
+            _ax.bar(_x + 0.19, _values('2'), 0.38, color='#b51f1f', label='second try')
+        else:
+            _ax.bar(_x, _values(_which), 0.6,
+                    color='#9a9a9a' if _which == '1' else '#b51f1f',
+                    label='first try' if _which == '1' else 'second try')
+
+        # The best known value is written outside the axes, because three panels carry three
+        # different maxima and one shared legend cannot say them all.
+        if _key in golds:
+            _ax.axhline(golds[_key], linestyle='--', color='#1a1a1a', linewidth=1)
+            _ax.annotate(f'{golds[_key]:.0%}', xy=(1.02, golds[_key]),
+                         xycoords=('axes fraction', 'data'), va='center', fontsize=8,
+                         color='#1a1a1a', annotation_clip=False)
+
+        _ax.set_title(_label, fontsize=10)
+        _ax.set_xticks(_x, _handles, rotation=45, ha='right', fontsize=7)
+        _ax.set_ylim(bottom=0)
+        for _side in ('top', 'right'):
+            _ax.spines[_side].set_visible(False)
+    _axes[0].set_ylabel('score')
+
+    _handles_, _labels_ = _axes[0].get_legend_handles_labels()
+    _fig.legend(_handles_, _labels_, frameon=False, ncols=2, loc='upper left',
+                bbox_to_anchor=(0.01, 1.0), fontsize=9)
+    _fig.tight_layout(rect=(0, 0, 1, 0.93))
     _fig
     return
 
 
 @app.cell(hide_code=True)
-def _(gold, mo, np, plt, tries):
-    _firsts = [row['1'] for row in tries.values() if '1' in row]
-    _seconds = [row['2'] for row in tries.values() if '2' in row]
-    mo.stop(not _firsts and not _seconds, mo.md(''))
+def _(golds, mo, np, plt, scores, tries):
+    mo.stop(not tries, mo.md(''))
 
-    _fig, _ax = plt.subplots(figsize=(5.2, 4.0))
-    _ax.boxplot([_firsts, _seconds], tick_labels=['first try', 'second try'],
-                medianprops={'color': '#b51f1f', 'linewidth': 2},
-                boxprops={'color': '#6a6a6a'}, whiskerprops={'color': '#6a6a6a'},
-                capprops={'color': '#6a6a6a'}, flierprops={'markeredgecolor': '#9a9a9a'})
-
-    # A workshop room is a dozen people at most, so the points themselves carry more than the box.
+    _fig, _axes = plt.subplots(1, 3, figsize=(13.5, 4.2))
     _jitter = np.random.default_rng(0)
-    for _at, _values in ((1, _firsts), (2, _seconds)):
-        _ax.scatter(_at + _jitter.uniform(-0.07, 0.07, len(_values)), _values,
-                    s=18, color='#9a9a9a', alpha=0.6, zorder=3)
-    if gold is not None:
-        _ax.axhline(gold, linestyle='--', color='#1a1a1a', linewidth=1, label=f'best known {gold:.1%}')
-        _ax.legend(frameon=False, loc='lower right')
+    _counts = {}
+    for _ax, (_key, _label) in zip(_axes, scores.METRIC_COLUMNS.items()):
+        _rounds = [[row[attempt][_key] for row in tries.values()
+                    if attempt in row and _key in row[attempt]] for attempt in ('1', '2')]
+        _counts[_key] = _rounds
+        _ax.boxplot(_rounds, tick_labels=['first try', 'second try'],
+                    medianprops={'color': '#b51f1f', 'linewidth': 2},
+                    boxprops={'color': '#6a6a6a'}, whiskerprops={'color': '#6a6a6a'},
+                    capprops={'color': '#6a6a6a'}, flierprops={'markeredgecolor': '#9a9a9a'})
 
-    _ax.set_ylim(bottom=0)
-    _ax.set_ylabel('Recall@5')
-    for _side in ('top', 'right'):
-        _ax.spines[_side].set_visible(False)
+        # A workshop room is a dozen people at most, so the points themselves carry more than
+        # the box.
+        for _at, _values in enumerate(_rounds, start=1):
+            _ax.scatter(_at + _jitter.uniform(-0.07, 0.07, len(_values)), _values,
+                        s=18, color='#9a9a9a', alpha=0.6, zorder=3)
+
+        if _key in golds:
+            _ax.axhline(golds[_key], linestyle='--', color='#1a1a1a', linewidth=1)
+            _ax.annotate(f'{golds[_key]:.0%}', xy=(1.02, golds[_key]),
+                         xycoords=('axes fraction', 'data'), va='center', fontsize=8,
+                         color='#1a1a1a', annotation_clip=False)
+
+        _ax.set_title(_label, fontsize=10)
+        _ax.set_ylim(bottom=0)
+        for _side in ('top', 'right'):
+            _ax.spines[_side].set_visible(False)
+    _axes[0].set_ylabel('score')
+    _fig.tight_layout()
 
     def _median(values):
         return f'{float(np.median(values)):.1%}' if values else 'nothing'
 
+    _first, _second = _counts['recall_at_5']
     mo.vstack([
         _fig,
-        mo.md(f'*{len(_firsts)} first tries, median {_median(_firsts)}; {len(_seconds)} second '
-              f'tries, median {_median(_seconds)}.*'),
+        mo.md(f'*Recall@5: {len(_first)} first tries, median {_median(_first)}; {len(_second)} '
+              f'second tries, median {_median(_second)}. The dashed line in each panel is the best '
+              'measured configuration for that metric.*'),
     ])
     return
 
