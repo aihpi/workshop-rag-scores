@@ -41,32 +41,38 @@ def _(mo):
 
 @app.cell(hide_code=True)
 def _(mo, scores, ui_load):
-    mo.stop(not ui_load.value, mo.md('*Press Load submissions.*'))
+    # Everything below reads these five names, so they are defined before anything can go wrong
+    # and stay empty until the button is pressed. A cell that stops before its definitions leaves
+    # its dependents with a NameError whenever marimo runs them without re-running this cell.
+    gold, known_configs, submissions, pulls = None, None, [], []
 
-    try:
-        with mo.status.spinner(title='Reading the measured grid...'):
-            _gold, _configs = scores.best_known()
-    except OSError:
-        # The grid only supplies the reference line and the list of measured configurations.
-        # Without it the submissions still read fine, so say so and carry on.
-        _gold, _configs = None, None
+    if ui_load.value:
+        try:
+            with mo.status.spinner(title='Reading the measured grid...'):
+                gold, known_configs = scores.best_known()
+        except OSError:
+            # The grid only supplies the reference line and the list of measured configurations.
+            # Without it the submissions still read fine, so say so and carry on.
+            gold, known_configs = None, None
 
-    try:
-        with mo.status.spinner(title='Reading the submissions...'):
-            submissions = scores.fetch_scores()
-            pulls = scores.open_pulls()
-    except OSError as exc:
-        submissions, pulls = [], []
-        mo.output.append(mo.callout(mo.md(f'GitHub is not reachable: `{exc}`'), kind='danger'))
+        try:
+            with mo.status.spinner(title='Reading the submissions...'):
+                submissions = scores.fetch_scores()
+                pulls = scores.open_pulls()
+        except OSError as exc:
+            submissions, pulls = [], []
+            mo.output.append(mo.callout(mo.md(f'GitHub is not reachable: `{exc}`'), kind='danger'))
+    else:
+        mo.output.append(mo.md('*Press Load submissions.*'))
 
-    gold, known_configs = _gold, _configs
     checked = [{**row, 'problems': scores.check_submission(row['body'], known_configs)}
                for row in submissions]
     return checked, gold, known_configs, pulls, submissions
 
 
 @app.cell(hide_code=True)
-def _(checked, gold, known_configs, mo, pulls):
+def _(checked, gold, known_configs, mo, pulls, ui_load):
+    mo.stop(not ui_load.value, mo.md(''))
     mo.stop(not checked and not pulls, mo.md('*No submissions yet.*'))
 
     _flagged = [row for row in checked if row['problems']]
@@ -128,16 +134,13 @@ def _(mo):
 
 @app.cell(hide_code=True)
 def _(checked, mo, scores):
-    mo.stop(not checked)
     ui_label = mo.ui.text(value=scores.today_label(), label='session label', full_width=False)
-    ui_label
+    ui_label if checked else mo.md('')
     return (ui_label,)
 
 
 @app.cell(hide_code=True)
 def _(checked, mo):
-    mo.stop(not checked)
-
     # Only clean, unlabelled submissions can be picked, so an off-template issue cannot be
     # confirmed into a session by a stray click.
     _open = {f'#{row["number"]}  {row["body"].get("handle", "?")}  try {row["body"].get("try", "?")}'
@@ -145,12 +148,13 @@ def _(checked, mo):
              for row in checked if not row['problems'] and not row['sessions']}
 
     ui_pick = mo.ui.multiselect(_open, label='submissions to confirm')
-    mo.vstack([ui_pick, mo.md(f'*{len(_open)} submissions are clean and not yet in a session.*')])
+    (mo.vstack([ui_pick, mo.md(f'*{len(_open)} submissions are clean and not yet in a session.*')])
+     if checked else mo.md(''))
     return (ui_pick,)
 
 
 @app.cell(hide_code=True)
-def _(get_done, mo, ui_label, ui_pick):
+def _(checked, get_done, mo, ui_label, ui_pick):
     # A button goes grey once its own action has been done, which is as early as marimo can grey
     # it: no cell can re-render while another cell is still working. The spinner in the worker
     # cell is what says the notebook is busy in the meantime.
@@ -161,7 +165,7 @@ def _(get_done, mo, ui_label, ui_pick):
     ui_create = mo.ui.run_button(label='Label created' if _made else 'Create label', disabled=_made)
     ui_apply = mo.ui.run_button(label='Applied' if _applied else 'Apply to selected',
                                 disabled=_applied)
-    mo.hstack([ui_create, ui_apply], justify='start')
+    mo.hstack([ui_create, ui_apply], justify='start') if checked else mo.md('')
     return ui_apply, ui_create
 
 
@@ -228,36 +232,47 @@ def _(mo):
 
 @app.cell(hide_code=True)
 def _(mo, scores, ui_refresh):
-    mo.stop(not ui_refresh.value, mo.md('*Press Load sessions.*'))
-    try:
-        with mo.status.spinner(title='Reading the sessions...'):
-            _labels = scores.session_labels()
-    except OSError as exc:
-        _labels = []
-        mo.output.append(mo.callout(mo.md(f'GitHub is not reachable: `{exc}`'), kind='warn'))
+    _labels = []
+    if ui_refresh.value:
+        try:
+            with mo.status.spinner(title='Reading the sessions...'):
+                _labels = scores.session_labels()
+        except OSError as exc:
+            mo.output.append(mo.callout(mo.md(f'GitHub is not reachable: `{exc}`'), kind='warn'))
+
     ui_session = mo.ui.dropdown({lab: lab for lab in _labels},
                                 value=_labels[0] if _labels else None, label='session')
-    ui_session
+    ui_session if ui_refresh.value else mo.md('*Press Load sessions.*')
     return (ui_session,)
 
 
 @app.cell(hide_code=True)
 def _(mo, scores, ui_session):
-    mo.stop(ui_session.value is None, mo.md('*No confirmed session yet.*'))
-
-    # Fetched here and not in the plotting cells, so switching the view costs nothing.
-    with mo.status.spinner(title='Reading the session...'):
-        tries = scores.by_handle(scores.fetch_session(ui_session.value))
-    mo.stop(not tries, mo.md('*Nothing confirmed into this session yet.*'))
+    # Both names are defined whatever happens, and the plotting cells below stop on an empty
+    # session themselves. A cell that stops before defining what its dependents read leaves them
+    # with a NameError the moment marimo runs them without re-running this one, which is what a
+    # notebook reloaded from a changed file on disk does.
+    tries = {}
+    if ui_session.value is not None:
+        # Fetched here and not in the plotting cells, so switching the view costs nothing.
+        with mo.status.spinner(title='Reading the session...'):
+            tries = scores.by_handle(scores.fetch_session(ui_session.value))
 
     ui_view = mo.ui.radio({'first try': '1', 'second try': '2', 'both': 'both'},
                           value='both', inline=True, label='show')
-    ui_view
+
+    if ui_session.value is None:
+        mo.md('*No confirmed session yet.*')
+    elif not tries:
+        mo.md('*Nothing confirmed into this session yet.*')
+    else:
+        ui_view
     return tries, ui_view
 
 
 @app.cell(hide_code=True)
 def _(gold, mo, np, plt, tries, ui_view):
+    mo.stop(not tries, mo.md(''))
     _which = ui_view.value
 
     # In the paired view a handle keeps its place from its first try, so the room can read the
