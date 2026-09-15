@@ -4,7 +4,7 @@
 
 # workshop-rag-scores
 
-Anonymous score submissions for the chunking exercise of the HPI AI Service Centre's **RAG II** workshop. This repository holds no code. Its issue tracker is the collection box.
+Anonymous score submissions for the chunking exercise of the HPI AI Service Centre's **RAG II** workshop. Its issue tracker is the collection box, and `instructor.py` is the view over it.
 
 ## What this is for
 
@@ -32,20 +32,27 @@ Anonymity has one limit worth stating plainly: GitHub records who opened an issu
 
 ## For the instructor
 
-Before the session, create the label for it:
+Everything happens in one notebook. Clone this repository and run it:
 
 ```bash
-gh api -X POST repos/aihpi/workshop-rag-scores/labels -f name=session-2026-09-15 -f color=0E8A16 -f description="RAG II, 15 September 2026"
+uv sync
 ```
-
-After each round, confirm the submissions that belong to the session:
 
 ```bash
-gh issue list --repo aihpi/workshop-rag-scores --label score --state all --limit 100
-gh issue edit <number> --repo aihpi/workshop-rag-scores --add-label session-2026-09-15
+uv run marimo run instructor.py
 ```
 
-The results view at the bottom of the playground notebook reads only labelled issues, so a score submitted after the workshop cannot change a past session. When the session is over, close the issues; they stay readable as a record.
+It loads every submission, shows what arrived, creates the `session-YYYY-MM-DD` label and applies it to the attempts that belong to the session.
+
+Two figures then show the room how it did. The first is a bar of Recall@5 per handle, switchable between the first try, the second try and both side by side; the second is a box plot of the two rounds with every submission drawn over it. Both carry the best measured configuration as a dashed line, which is the ceiling nobody in the room is expected to reach.
+
+Every slow button shows a spinner while it works, and labelling shows a bar because it edits one issue at a time. A button that has done its work goes grey; marimo runs one cell at a time, so that happens once the work is finished rather than while it runs.
+
+Reading needs no credentials. **Labelling needs `gh` logged in** as someone with triage rights here, so run `gh auth login` once. Someone else who clones this repository can read the submissions, as anyone can on a public repository, but their label calls are refused.
+
+Only labelled submissions count, so a score sent in after the workshop cannot change a past session. Submissions that do not match the template the notebook writes are flagged with a reason and cannot be added to a session by mistake. When the session is over, close the issues; they stay readable as a record.
+
+A pull request is never a submission. If one appears, the notebook says so at the top, because that is someone proposing a change to this repository rather than a score.
 
 ## Licence
 
